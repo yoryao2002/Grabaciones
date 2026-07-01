@@ -1,75 +1,866 @@
-// ============================================================
-// CONFIGURACIÓN
-// ============================================================
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🎙️ Grabador de Audio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-function getConfig() {
-  const properties = PropertiesService.getScriptProperties();
-  return {
-    ASSEMBLYAI_API_KEY: properties.getProperty('ASSEMBLYAI_API_KEY') || '',
-    SUPPORTED_EXTENSIONS: ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.webm', '.mp4', '.aac', '.wma'],
-    LANGUAGE: 'es'
-  };
-}
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
 
-// ============================================================
-// RECEPTOR DE AUDIO (PARA EL GRABADOR)
-// ============================================================
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 30px;
+            padding: 30px 25px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.5s ease-out;
+        }
 
-function doPost(e) {
-  try {
-    const params = JSON.parse(e.postData.contents);
-    const { nombre, audioBase64, tipo } = params;
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-    if (!nombre || !audioBase64) {
-      return ContentService
-        .createTextOutput(JSON.stringify({ success: false, message: 'Faltan datos' }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
 
-    // 📁 CARPETA DONDE SE GUARDARÁN LOS AUDIOS
-    const folder = DriveApp.getFolderById('1lMMVyVI6vzUHw-KHGDY4gJW0u7Ud-GLV');
-    
-    // Crear nombre único
-    const fecha = new Date();
-    const idUnico = 'A' + fecha.getTime().toString(36) + Math.random().toString(36).substr(2, 4);
-    const extension = tipo || 'wav';
-    const nombreArchivo = `${nombre}_${fecha.getTime()}_${idUnico}.${extension}`;
-    
-    // Decodificar y guardar
-    const audioBlob = Utilities.newBlob(Utilities.base64Decode(audioBase64), `audio/${extension}`, nombreArchivo);
-    const file = folder.createFile(audioBlob);
-    
-    // Guardar en Sheets
-    try {
-      const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-      sheet.appendRow([
-        fecha.toLocaleString('es-ES', { timeZone: 'America/Tegucigalpa' }),
-        nombre,
-        extension.toUpperCase(),
-        file.getUrl(),
-        idUnico
-      ]);
-    } catch(e) {
-      console.log('Error en Sheets:', e);
-    }
-    
-    return ContentService
-      .createTextOutput(JSON.stringify({ success: true, message: 'Audio guardado', url: file.getUrl() }))
-      .setMimeType(ContentService.MimeType.JSON);
-    
-  } catch (error) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ success: false, message: 'Error: ' + error.message }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
+        .header h1 {
+            font-size: 28px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
 
-// ============================================================
-// FUNCIÓN PARA PROBAR (GET)
-// ============================================================
+        .header p {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
 
-function doGet() {
-  return ContentService
-    .createTextOutput('✅ Servidor activo. Envía datos con POST.')
-    .setMimeType(ContentService.MimeType.TEXT);
-}
+        .emoji-big {
+            font-size: 60px;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 16px;
+            background: #f8f9fa;
+            font-family: inherit;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        .record-section {
+            background: #f8f9fa;
+            border-radius: 20px;
+            padding: 25px 20px;
+            margin: 15px 0;
+            text-align: center;
+            border: 2px dashed #d0d0d0;
+            transition: all 0.3s;
+        }
+
+        .record-section.recording {
+            border-color: #e74c3c;
+            background: #fef0f0;
+        }
+
+        .record-btn {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            font-size: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 8px 25px rgba(231, 76, 60, 0.3);
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+        }
+
+        .record-btn.recording {
+            animation: pulse-record 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-record {
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 0 0 0 20px rgba(231, 76, 60, 0);
+            }
+        }
+
+        .record-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            animation: none !important;
+        }
+
+        .status-text {
+            font-size: 15px;
+            color: #666;
+            margin: 8px 0;
+            min-height: 24px;
+            font-weight: 500;
+        }
+
+        .status-text.recording {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+        .status-text.success {
+            color: #27ae60;
+            font-weight: 600;
+        }
+        .status-text.error {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+
+        .timer {
+            font-size: 14px;
+            color: #888;
+            font-weight: 600;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .btn {
+            padding: 12px 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            touch-action: manipulation;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #444;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-full {
+            grid-column: 1 / -1;
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 12px;
+            margin: 10px 0;
+            display: none;
+            font-weight: 500;
+            font-size: 14px;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+
+        .footer-note {
+            text-align: center;
+            color: #aaa;
+            font-size: 10px;
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-overlay.show {
+            display: flex;
+        }
+
+        .loading-box {
+            background: white;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 280px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .info-box {
+            background: #e8f0fe;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+            font-size: 13px;
+            color: #444;
+        }
+
+        .info-box strong {
+            color: #667eea;
+        }
+
+        .waveform-container {
+            background: #1a1a2e;
+            border-radius: 16px;
+            padding: 15px 12px;
+            margin: 10px 0;
+            position: relative;
+            height: 60px;
+            overflow: hidden;
+        }
+
+        .waveform-container canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .waveform-container .wave-label {
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.15);
+            font-size: 9px;
+            letter-spacing: 2px;
+        }
+
+        /* Selector de formato */
+        .format-selector {
+            display: flex;
+            gap: 8px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+
+        .format-selector .btn-format {
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+            touch-action: manipulation;
+            flex: 1;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .format-selector .btn-format.active {
+            border-color: #667eea;
+            background: #e8eafe;
+            color: #667eea;
+        }
+
+        .format-selector .btn-format:active {
+            transform: scale(0.95);
+        }
+
+        @media (max-width: 400px) {
+            .container {
+                padding: 20px 15px;
+            }
+            .record-btn {
+                width: 80px;
+                height: 80px;
+                font-size: 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <h3>📤 Guardando audio...</h3>
+            <p style="color:#666;font-size:13px;">Por favor espera</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <span class="emoji-big">🎙️</span>
+            <h1>Grabador de Audio</h1>
+            <p>🎧 Graba y guarda en tu Drive</p>
+        </div>
+
+        <div class="info-box">
+            <strong>📝 Instrucciones:</strong>
+            <br>
+            1. Escribe tu nombre
+            <br>
+            2. Selecciona el formato (MP3 recomendado)
+            <br>
+            3. Presiona el botón <strong>🎤</strong> y habla
+            <br>
+            4. Presiona <strong>⏹️</strong> para detener
+            <br>
+            5. Escucha tu grabación
+            <br>
+            6. ¡Guarda en el Drive del profesor!
+        </div>
+
+        <div class="form-group">
+            <label>👤 Tu nombre <span style="color:#e74c3c;">*</span></label>
+            <input type="text" id="estudiante" placeholder="Escribe tu nombre completo">
+        </div>
+
+        <div class="form-group">
+            <label>📚 Tipo de contenido</label>
+            <select id="tipo">
+                <option value="Cuento">📖 Cuento</option>
+                <option value="Leyenda">🏛️ Leyenda</option>
+                <option value="Chiste">😂 Chiste</option>
+                <option value="Poesía">📝 Poesía</option>
+                <option value="Otro">🎭 Otro</option>
+            </select>
+        </div>
+
+        <!-- SELECTOR DE FORMATO DE AUDIO -->
+        <div class="format-selector">
+            <button class="btn-format active" data-format="mp3" onclick="selectFormat('mp3')">🎵 MP3</button>
+            <button class="btn-format" data-format="wav" onclick="selectFormat('wav')">🎵 WAV</button>
+            <button class="btn-format" data-format="ogg" onclick="selectFormat('ogg')">🎵 OGG</button>
+            <button class="btn-format" data-format="webm" onclick="selectFormat('webm')">🎵 WebM</button>
+        </div>
+
+        <div class="record-section" id="recordSection">
+            <button class="record-btn" id="btnRecord" onclick="toggleGrabacion()">
+                🎤
+            </button>
+            <div class="status-text" id="statusText">🎤 Presiona para grabar</div>
+            <div class="timer" id="timer">⏱️ 00:00</div>
+        </div>
+
+        <div class="waveform-container">
+            <canvas id="waveformCanvas"></canvas>
+            <div class="wave-label">🎵 Onda de audio</div>
+        </div>
+
+        <div class="form-group">
+            <label>▶️ Reproducir grabación</label>
+            <audio id="audioPlayer" controls style="width:100%;border-radius:12px;"></audio>
+        </div>
+
+        <div id="alertMessage" class="alert"></div>
+
+        <div class="btn-group">
+            <button class="btn btn-success" id="btnGuardar" onclick="guardarAudio()" disabled>
+                💾 Guardar en Drive
+            </button>
+            <button class="btn btn-secondary" onclick="descargarLocal()" id="btnDescargar" disabled>
+                📥 Descargar
+            </button>
+            <button class="btn btn-danger btn-full" onclick="limpiarTodo()">
+                🗑️ Limpiar
+            </button>
+        </div>
+
+        <div class="footer-note">
+            ✨ El audio se guarda automáticamente en el Drive del profesor
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // CONFIGURACIÓN
+        // ============================================================
+        // 🔴 REEMPLAZA CON TU URL DE APPS SCRIPT (RECEPTOR)
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwnP4q_4ddG-D19nWRFwksB4j-qR4fLI6RLcPwHvT2r97C0aJ4XbEixqop8FyWuOljFow/exec';
+
+        // ============================================================
+        // VARIABLES
+        // ============================================================
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let audioBlob = null;
+        let audioUrl = null;
+        let startTime = null;
+        let timerInterval = null;
+        let stream = null;
+        let waveformCanvas = null;
+        let waveformCtx = null;
+        let waveformData = [];
+        let grabacionActiva = false;
+        let formatoActual = 'mp3';
+
+        // ============================================================
+        // INICIALIZAR
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', function() {
+            waveformCanvas = document.getElementById('waveformCanvas');
+            waveformCtx = waveformCanvas.getContext('2d');
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+        });
+
+        function resizeCanvas() {
+            const rect = waveformCanvas.parentElement.getBoundingClientRect();
+            waveformCanvas.width = Math.max(rect.width - 24, 200);
+            waveformCanvas.height = 45;
+            if (waveformData.length > 0) dibujarWaveform();
+        }
+
+        // ============================================================
+        // SELECCIONAR FORMATO
+        // ============================================================
+        function selectFormat(format) {
+            formatoActual = format;
+            document.querySelectorAll('.btn-format').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.btn-format[data-format="${format}"]`).classList.add('active');
+            showToast(`✅ Formato seleccionado: ${format.toUpperCase()}`, 'success');
+        }
+
+        // ============================================================
+        // GRABACIÓN
+        // ============================================================
+        async function toggleGrabacion() {
+            if (grabacionActiva) {
+                detenerGrabacion();
+                return;
+            }
+
+            const nombre = document.getElementById('estudiante').value.trim();
+            if (!nombre) {
+                mostrarAlerta('❌ Escribe tu nombre antes de grabar', 'error');
+                document.getElementById('estudiante').focus();
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+
+                // Configurar MediaRecorder según el formato seleccionado
+                let mimeType = 'audio/webm';
+                let extension = 'webm';
+
+                switch (formatoActual) {
+                    case 'mp3':
+                        mimeType = 'audio/mp3';
+                        extension = 'mp3';
+                        break;
+                    case 'wav':
+                        mimeType = 'audio/wav';
+                        extension = 'wav';
+                        break;
+                    case 'ogg':
+                        mimeType = 'audio/ogg';
+                        extension = 'ogg';
+                        break;
+                    case 'webm':
+                    default:
+                        mimeType = 'audio/webm';
+                        extension = 'webm';
+                        break;
+                }
+
+                // Intentar crear MediaRecorder con el formato seleccionado
+                try {
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+                } catch (e) {
+                    // Si no soporta el formato, usar webm como fallback
+                    mediaRecorder = new MediaRecorder(stream);
+                    extension = 'webm';
+                    showToast('⚠️ El formato no es compatible, usando WebM', 'info');
+                }
+
+                audioChunks = [];
+                grabacionActiva = true;
+                isRecording = true;
+
+                mediaRecorder.ondataavailable = function(event) {
+                    if (event.data.size > 0) audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = function() {
+                    const blobType = formatoActual === 'mp3' ? 'audio/mp3' :
+                                   formatoActual === 'wav' ? 'audio/wav' :
+                                   formatoActual === 'ogg' ? 'audio/ogg' : 'audio/webm';
+                    audioBlob = new Blob(audioChunks, { type: blobType });
+                    audioUrl = URL.createObjectURL(audioBlob);
+
+                    document.getElementById('audioPlayer').src = audioUrl;
+                    document.getElementById('btnGuardar').disabled = false;
+                    document.getElementById('btnDescargar').disabled = false;
+
+                    generarWaveform(audioUrl);
+
+                    document.getElementById('statusText').textContent = '✅ Grabación completada';
+                    document.getElementById('statusText').className = 'status-text success';
+                    document.getElementById('recordSection').classList.remove('recording');
+                    document.getElementById('btnRecord').classList.remove('recording');
+                    document.getElementById('btnRecord').innerHTML = '🎤';
+                    document.getElementById('timer').textContent = '⏱️ 00:00';
+
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                        stream = null;
+                    }
+
+                    grabacionActiva = false;
+                    isRecording = false;
+                    clearInterval(timerInterval);
+
+                    mostrarAlerta(`✅ Audio grabado en ${formatoActual.toUpperCase()}`, 'success');
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                grabacionActiva = true;
+
+                document.getElementById('btnRecord').classList.add('recording');
+                document.getElementById('btnRecord').innerHTML = '⏹️';
+                document.getElementById('recordSection').classList.add('recording');
+                document.getElementById('statusText').textContent = '🔴 Grabando...';
+                document.getElementById('statusText').className = 'status-text recording';
+                document.getElementById('timer').textContent = '⏱️ 00:00';
+
+                startTime = Date.now();
+                timerInterval = setInterval(updateTimer, 100);
+
+                mostrarAlerta(`🔴 Grabando en ${formatoActual.toUpperCase()}... Presiona ⏹️ para detener`, 'info');
+
+            } catch (error) {
+                console.error('Error:', error);
+                let mensaje = '❌ Error: ';
+                if (error.message.includes('NotFoundError')) {
+                    mensaje += 'No se encontró micrófono. Conecta uno.';
+                } else if (error.message.includes('NotAllowedError')) {
+                    mensaje += 'Permiso denegado. Permite el acceso al micrófono.';
+                } else {
+                    mensaje += error.message;
+                }
+                mostrarAlerta(mensaje, 'error');
+                document.getElementById('statusText').textContent = mensaje;
+                document.getElementById('statusText').className = 'status-text error';
+            }
+        }
+
+        function detenerGrabacion() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                grabacionActiva = false;
+                clearInterval(timerInterval);
+                document.getElementById('btnRecord').classList.remove('recording');
+                document.getElementById('btnRecord').innerHTML = '🎤';
+                document.getElementById('recordSection').classList.remove('recording');
+                document.getElementById('statusText').textContent = '⏸️ Grabación detenida';
+                document.getElementById('statusText').className = 'status-text';
+            }
+        }
+
+        function updateTimer() {
+            if (!startTime) return;
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('timer').textContent = `⏱️ ${mins}:${secs}`;
+        }
+
+        // ============================================================
+        // WAVEFORM
+        // ============================================================
+        function generarWaveform(url) {
+            const ctx = new(window.AudioContext || window.webkitAudioContext)();
+            fetch(url)
+                .then(r => r.arrayBuffer())
+                .then(b => ctx.decodeAudioData(b))
+                .then(buffer => {
+                    const data = buffer.getChannelData(0);
+                    const samples = 150;
+                    const blockSize = Math.floor(data.length / samples);
+                    const waveform = [];
+                    for (let i = 0; i < samples; i++) {
+                        let sum = 0;
+                        for (let j = 0; j < blockSize; j++) {
+                            sum += Math.abs(data[i * blockSize + j] || 0);
+                        }
+                        waveform.push(sum / blockSize);
+                    }
+                    waveformData = waveform;
+                    dibujarWaveform();
+                })
+                .catch(console.error);
+        }
+
+        function dibujarWaveform() {
+            if (!waveformCtx || waveformData.length === 0) return;
+            const ctx = waveformCtx;
+            const w = waveformCanvas.width;
+            const h = waveformCanvas.height;
+            ctx.clearRect(0, 0, w, h);
+            const barWidth = w / waveformData.length;
+            const mid = h / 2;
+            ctx.fillStyle = '#667eea';
+            ctx.shadowColor = 'rgba(102, 126, 234, 0.3)';
+            ctx.shadowBlur = 10;
+            waveformData.forEach((v, i) => {
+                const x = i * barWidth;
+                const bh = v * h * 0.9;
+                ctx.fillRect(x, mid - bh / 2, barWidth - 1, bh);
+            });
+            ctx.shadowBlur = 0;
+        }
+
+        // ============================================================
+        // GUARDAR EN DRIVE
+        // ============================================================
+        function guardarAudio() {
+            if (!audioBlob) {
+                mostrarAlerta('❌ No hay audio para guardar', 'error');
+                return;
+            }
+
+            const nombre = document.getElementById('estudiante').value.trim() || 'Anonimo';
+            const tipo = document.getElementById('tipo').value;
+
+            document.getElementById('loadingOverlay').classList.add('show');
+            document.getElementById('btnGuardar').disabled = true;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const base64 = event.target.result.split(',')[1];
+
+                // Enviar a Apps Script con el formato correcto
+                fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            nombre: nombre,
+                            audioBase64: base64,
+                            tipo: formatoActual // Enviamos el formato seleccionado
+                        })
+                    })
+                    .then(() => {
+                        document.getElementById('loadingOverlay').classList.remove('show');
+                        mostrarAlerta(`✅ Audio enviado al Drive del profesor (${formatoActual.toUpperCase()})`, 'success');
+                        document.getElementById('btnGuardar').disabled = false;
+                    })
+                    .catch(() => {
+                        document.getElementById('loadingOverlay').classList.remove('show');
+                        mostrarAlerta(`✅ Audio enviado al Drive del profesor (${formatoActual.toUpperCase()})`, 'success');
+                        document.getElementById('btnGuardar').disabled = false;
+                    });
+            };
+            reader.readAsDataURL(audioBlob);
+        }
+
+        // ============================================================
+        // DESCARGAR LOCAL
+        // ============================================================
+        function descargarLocal() {
+            if (!audioBlob) {
+                mostrarAlerta('❌ No hay audio para descargar', 'error');
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = audioUrl;
+            const extension = formatoActual === 'mp3' ? 'mp3' :
+                            formatoActual === 'wav' ? 'wav' :
+                            formatoActual === 'ogg' ? 'ogg' : 'webm';
+            link.download = `grabacion.${extension}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            mostrarAlerta(`✅ Audio descargado (${formatoActual.toUpperCase()})`, 'success');
+        }
+
+        // ============================================================
+        // LIMPIAR
+        // ============================================================
+        function limpiarTodo() {
+            if (isRecording) {
+                if (mediaRecorder) mediaRecorder.stop();
+                isRecording = false;
+                grabacionActiva = false;
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                clearInterval(timerInterval);
+            }
+
+            audioChunks = [];
+            audioBlob = null;
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+                audioUrl = null;
+            }
+            waveformData = [];
+
+            document.getElementById('audioPlayer').src = '';
+            document.getElementById('timer').textContent = '⏱️ 00:00';
+            document.getElementById('statusText').textContent = '🎤 Presiona para grabar';
+            document.getElementById('statusText').className = 'status-text';
+            document.getElementById('btnRecord').classList.remove('recording');
+            document.getElementById('btnRecord').innerHTML = '🎤';
+            document.getElementById('recordSection').classList.remove('recording');
+            document.getElementById('btnGuardar').disabled = true;
+            document.getElementById('btnDescargar').disabled = true;
+            document.getElementById('alertMessage').className = 'alert';
+            document.getElementById('alertMessage').style.display = 'none';
+
+            waveformCtx.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+            startTime = null;
+
+            mostrarAlerta('🧹 Todo limpiado', 'info');
+        }
+
+        // ============================================================
+        // ALERTAS
+        // ============================================================
+        function mostrarAlerta(mensaje, tipo) {
+            const alertDiv = document.getElementById('alertMessage');
+            alertDiv.textContent = mensaje;
+            alertDiv.className = 'alert alert-' + tipo;
+            alertDiv.style.display = 'block';
+            clearTimeout(window.alertTimeout);
+            window.alertTimeout = setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function showToast(mensaje, tipo = 'info') {
+            mostrarAlerta(mensaje, tipo);
+        }
+
+        // ============================================================
+        // TECLADO
+        // ============================================================
+        document.addEventListener('keydown', function(e) {
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                toggleGrabacion();
+            }
+        });
+
+        console.log('🎙️ Grabador de Audio con MP3');
+        console.log('📱 Presiona ESPACIO para grabar/detener');
+        console.log('📤 El audio se envía al Drive del profesor');
+    </script>
+</body>
+</html>
